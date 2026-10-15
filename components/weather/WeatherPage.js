@@ -1,10 +1,11 @@
-// Contenu d'une ville : état de chargement ou d'erreur, puis toutes les sections météo.
+// Contenu d'une ville : chargement ou erreur, puis toutes les sections météo.
 
 import { useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Button from '../ui/Button';
+import FadeInView from '../ui/FadeInView';
 import InfoModal from '../ui/InfoModal';
 import CurrentConditions from './CurrentConditions';
 import NowcastCard from './NowcastCard';
@@ -13,6 +14,7 @@ import HourlyForecast from './HourlyForecast';
 import DailyForecast from './DailyForecast';
 import DayDetailModal from './DayDetailModal';
 import RadarPreview from './RadarPreview';
+import { useSettings } from '../../contexts/SettingsContext';
 import { AQI_GUIDE, HUMIDITY_GUIDE, UV_GUIDE } from '../../constants/info';
 import { COLORS } from '../../constants/theme';
 import { aqiLevel } from '../../utils/format';
@@ -34,6 +36,7 @@ const SunMoonContent = ({ info }) => (
 
 export default function WeatherPage({ location, onRefresh, onDelete }) {
   const router = useRouter();
+  const { settings } = useSettings();
   const [refreshing, setRefreshing] = useState(false);
   const [infoKey, setInfoKey] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
@@ -45,7 +48,7 @@ export default function WeatherPage({ location, onRefresh, onDelete }) {
   };
 
   const refreshControl = (
-    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.text} />
+    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.text} colors={[COLORS.accent]} />
   );
 
   const data = location.data;
@@ -61,7 +64,9 @@ export default function WeatherPage({ location, onRefresh, onDelete }) {
           </>
         ) : (
           <>
-            <Ionicons name="cloud-offline-outline" size={48} color="rgba(255,255,255,0.8)" />
+            <View style={styles.errorIcon}>
+              <Ionicons name="cloud-offline-outline" size={40} color={COLORS.text} />
+            </View>
             <Text style={styles.message}>{location.error ?? 'Météo indisponible.'}</Text>
             <Button label="Réessayer" variant="primary" onPress={handleRefresh} />
           </>
@@ -76,7 +81,7 @@ export default function WeatherPage({ location, onRefresh, onDelete }) {
   }
 
   const today = data.daily[0];
-  const info = infoKey ? sunInfo(today) : null;
+  const info = infoKey === 'sun' ? sunInfo(today) : null;
 
   return (
     <ScrollView
@@ -92,23 +97,42 @@ export default function WeatherPage({ location, onRefresh, onDelete }) {
         </View>
       ) : null}
 
-      <CurrentConditions current={data.current} />
-      <NowcastCard minutely={data.minutely} />
-      <DetailTiles current={data.current} today={today} onInfo={setInfoKey} />
-      <HourlyForecast hours={data.hourly} />
-      <DailyForecast days={data.daily} onSelectDay={setSelectedDay} />
+      <FadeInView delay={0}>
+        <CurrentConditions current={data.current} today={today} />
+      </FadeInView>
 
-      {location.latitude != null && (
-        <RadarPreview
-          latitude={location.latitude}
-          longitude={location.longitude}
-          onOpenFullscreen={() =>
-            router.push({
-              pathname: '/rain-radar',
-              params: { lat: location.latitude, lon: location.longitude, city: location.name },
-            })
-          }
-        />
+      {settings.showNowcast && (
+        <FadeInView delay={80}>
+          <NowcastCard minutely={data.minutely} />
+        </FadeInView>
+      )}
+
+      <FadeInView delay={160}>
+        <DetailTiles current={data.current} today={today} onInfo={setInfoKey} />
+      </FadeInView>
+
+      <FadeInView delay={240}>
+        <HourlyForecast hours={data.hourly} />
+      </FadeInView>
+
+      <FadeInView delay={320}>
+        <DailyForecast days={data.daily} onSelectDay={setSelectedDay} />
+      </FadeInView>
+
+      {settings.showRadar && location.latitude != null && (
+        <FadeInView delay={400}>
+          <RadarPreview
+            latitude={location.latitude}
+            longitude={location.longitude}
+            layer={settings.radarLayer}
+            onOpenFullscreen={() =>
+              router.push({
+                pathname: '/rain-radar',
+                params: { lat: location.latitude, lon: location.longitude, city: location.name },
+              })
+            }
+          />
+        </FadeInView>
       )}
 
       {infoKey === 'humidity' && <InfoModal {...HUMIDITY_GUIDE} onClose={() => setInfoKey(null)} />}
@@ -133,8 +157,18 @@ export default function WeatherPage({ location, onRefresh, onDelete }) {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 20, paddingBottom: 60 },
+  content: { paddingHorizontal: 18, paddingBottom: 60 },
   centered: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 16 },
+  errorIcon: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
   message: { color: COLORS.text, fontSize: 16, textAlign: 'center', lineHeight: 22 },
   deleteWrap: { marginTop: 24 },
   banner: {
@@ -143,8 +177,8 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 12,
     marginBottom: 16,
-    borderRadius: 14,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderRadius: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
     borderWidth: 1,
     borderColor: 'rgba(252, 211, 77, 0.4)',
   },
@@ -156,7 +190,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     padding: 16,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   sunCardTitle: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', textAlign: 'center' },

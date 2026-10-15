@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
+import { useSettings } from '../contexts/SettingsContext';
 import { buildRadarUrl } from '../utils/radar';
 import { COLORS } from '../constants/theme';
 
@@ -23,7 +24,8 @@ export default function RainRadarScreen() {
   const longitude = parseFloat(params.lon) || 2.352;
   const cityName = params.city || 'Radar météo';
 
-  const [layer, setLayer] = useState('rain');
+  const { settings } = useSettings();
+  const [layer, setLayer] = useState(settings.radarLayer);
   const [loading, setLoading] = useState(true);
   const webviewRef = useRef(null);
 

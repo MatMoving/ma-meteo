@@ -14,7 +14,7 @@ Données fournies par [Open-Meteo](https://open-meteo.com) (gratuit, sans clé A
 - **Radar de pluie** intégré, en aperçu et en plein écran (pluie, vent, nuages, température).
 - **Fond animé** selon le temps : soleil, nuages, pluie, orage avec éclairs, neige, brouillard, nuit étoilée.
 - **Widget Android** « Météo Actuelle » (4×2), mis à jour depuis le cache de l'application.
-- **Bouton fiole** : affiche des ciels de test (soleil, pluie, orage, neige, nuit) pour vérifier les animations.
+- **Paramètres** : unités (°C/°F, km/h, m/s, mph), intensité des animations, mise à jour automatique au retour dans l'application, couche radar par défaut, affichage de la pluie dans l'heure et du radar, gestion des villes, aperçus de ciel pour tester les animations.
 
 ## Installer l'application (APK)
 
@@ -56,6 +56,15 @@ utils/
 ```
 
 ## Historique
+
+### 2.1.0
+
+- Écran **Paramètres** (icône engrenage en haut à gauche) : unités, animations (complètes, réduites, aucune), mise à jour au retour dans l'application, couche radar par défaut, sections affichées, gestion des villes, aperçus de ciel.
+- Fond qui se fond en douceur quand le temps change ; sections qui apparaissent en fondu.
+- Design : bloc principal avec icône et extrêmes du jour, tuiles avec pastille colorée, titres de section, barre du haut revue.
+- Animations : flocons qui oscillent, étoile filante la nuit, halo de lune qui respire, moins de particules en mode réduit.
+- Le titre de la ville suit le défilement.
+- Widget Android aligné sur les unités choisies.
 
 ### 2.0.0
 

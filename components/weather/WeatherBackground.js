@@ -1,10 +1,11 @@
 // Fond animé selon le temps : soleil, nuit étoilée, nuages, pluie, orage, neige, brouillard.
-// Toutes les animations tournent sur le moteur natif (useNativeDriver) et s'arrêtent
-// proprement au démontage. Les effets sont derrière le contenu et restent discrets.
+// Trois niveaux (réglage) : complètes, réduites (moins de particules, plus lentes) ou aucune.
+// Les animations tournent sur le moteur natif et s'arrêtent proprement au démontage.
 
 import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 
 // Boucle infinie 0 → 1. Le délai ne sert qu'une fois, au départ, pour décaler les éléments.
@@ -23,7 +24,7 @@ const useLoop = (duration, delay = 0) => {
   return value;
 };
 
-// Générateur pseudo-aléatoire à graine : la disposition reste la même à chaque rendu
+// Générateur pseudo-aléatoire à graine : la disposition reste identique à chaque rendu
 const seeded = (seed) => {
   let s = seed;
   return () => {
@@ -32,8 +33,10 @@ const seeded = (seed) => {
   };
 };
 
-// Une goutte (ou un flocon) qui tombe en boucle
-const Drop = ({ left, length, width, duration, delay, color, height, round }) => {
+const scaled = (count, reduced) => Math.round(count * (reduced ? 0.4 : 1));
+
+// Une goutte qui tombe en boucle
+const Drop = ({ left, length, width, duration, delay, color, height }) => {
   const progress = useLoop(duration, delay);
   const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [-length, height] });
   return (
@@ -44,7 +47,7 @@ const Drop = ({ left, length, width, duration, delay, color, height, round }) =>
         top: 0,
         width,
         height: length,
-        borderRadius: round ? width / 2 : 1,
+        borderRadius: width / 2,
         backgroundColor: color,
         transform: [{ translateY }],
       }}
@@ -52,7 +55,7 @@ const Drop = ({ left, length, width, duration, delay, color, height, round }) =>
   );
 };
 
-// Pluie : inclinée, plus dense et plus rapide pour l'orage
+// Pluie inclinée ; l'orage est plus dense et plus rapide
 const RainLayer = ({ count, heavy = false }) => {
   const { width, height } = useWindowDimensions();
   const drops = useMemo(() => {
@@ -93,37 +96,45 @@ const RainLayer = ({ count, heavy = false }) => {
   );
 };
 
-const SnowLayer = () => {
+// Flocon qui tombe en oscillant doucement de gauche à droite
+const Flake = ({ left, size, duration, delay, height }) => {
+  const fall = useLoop(duration, delay);
+  const sway = useLoop(duration * 0.4, delay);
+  const translateY = fall.interpolate({ inputRange: [0, 1], outputRange: [-size, height] });
+  const translateX = sway.interpolate({ inputRange: [0, 0.5, 1], outputRange: [-10, 10, -10] });
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left,
+        top: 0,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        transform: [{ translateY }, { translateX }],
+      }}
+    />
+  );
+};
+
+const SnowLayer = ({ count }) => {
   const { width, height } = useWindowDimensions();
   const flakes = useMemo(() => {
     const rand = seeded(19);
-    return Array.from({ length: 40 }, () => {
-      const size = 3 + rand() * 4;
-      return {
-        left: rand() * width,
-        size,
-        duration: 6000 + rand() * 4000,
-        delay: rand() * 6000,
-      };
-    });
-  }, [width]);
+    return Array.from({ length: count }, () => ({
+      left: rand() * width,
+      size: 3 + rand() * 4,
+      duration: 6000 + rand() * 4000,
+      delay: rand() * 6000,
+    }));
+  }, [count, width]);
 
-  return flakes.map((f, i) => (
-    <Drop
-      key={i}
-      left={f.left}
-      length={f.size}
-      width={f.size}
-      duration={f.duration}
-      delay={f.delay}
-      color="rgba(255, 255, 255, 0.85)"
-      height={height}
-      round
-    />
-  ));
+  return flakes.map((f, i) => <Flake key={i} {...f} height={height} />);
 };
 
-// Éclairs : flash blanc bref + zigzag jaune, à intervalles aléatoires
+// Éclairs : flash blanc bref et zigzag jaune, à intervalles aléatoires
 const Lightning = () => {
   const flash = useRef(new Animated.Value(0)).current;
 
@@ -154,12 +165,61 @@ const Lightning = () => {
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(224, 231, 255, 0.22)', opacity: flash }]}
       />
-      <Animated.View pointerEvents="none" style={[styles.bolt, { opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}>
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.bolt, { opacity: flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}
+      >
         <Svg width={110} height={200} viewBox="0 0 110 200">
           <Path d="M62 0 L22 110 L52 110 L36 200 L92 84 L60 84 L78 0 Z" fill="#FDE68A" />
         </Svg>
       </Animated.View>
     </>
+  );
+};
+
+// Étoile filante qui traverse le ciel de temps en temps
+const ShootingStar = () => {
+  const { width, height } = useWindowDimensions();
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let alive = true;
+    let timer;
+    const shoot = () => {
+      progress.setValue(0);
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 1000,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => {
+        if (alive) timer = setTimeout(shoot, 8000 + Math.random() * 10000);
+      });
+    };
+    timer = setTimeout(shoot, 2500 + Math.random() * 3000);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      progress.stopAnimation();
+    };
+  }, [progress]);
+
+  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [0, -width * 0.7] });
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [0, height * 0.18] });
+  const opacity = progress.interpolate({ inputRange: [0, 0.15, 0.7, 1], outputRange: [0, 1, 1, 0] });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.shootingStar, { opacity, transform: [{ translateX }, { translateY }, { rotate: '-22deg' }] }]}
+    >
+      <LinearGradient
+        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.95)']}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={styles.fill}
+      />
+    </Animated.View>
   );
 };
 
@@ -196,12 +256,15 @@ const Stars = ({ count }) => {
   return stars.map((s, i) => <Star key={i} {...s} />);
 };
 
+// Lune qui flotte doucement, avec un halo qui respire
 const Moon = () => {
   const float = useLoop(7000);
+  const breathe = useLoop(5000);
   const translateY = float.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -8, 0] });
+  const haloScale = breathe.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.12, 1] });
   return (
     <Animated.View pointerEvents="none" style={[styles.moon, { transform: [{ translateY }] }]}>
-      <View style={styles.moonHalo} />
+      <Animated.View style={[styles.moonHalo, { transform: [{ scale: haloScale }] }]} />
       <Ionicons name="moon" size={92} color="rgba(241, 245, 249, 0.9)" />
     </Animated.View>
   );
@@ -210,9 +273,9 @@ const Moon = () => {
 const RAYS = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
 
 // Soleil : cœur lumineux, halo qui respire et rayons qui tournent lentement
-const SunGlow = ({ strength }) => {
+const SunGlow = ({ strength, spinDuration }) => {
   const pulse = useLoop(5200);
-  const spin = useLoop(140000);
+  const spin = useLoop(spinDuration);
   const haloScale = pulse.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.12, 1] });
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
@@ -301,29 +364,34 @@ const FOG_BANDS = [
   { top: 480, duration: 46000, delay: 4000 },
 ];
 
-export default function WeatherBackground({ kind, isDay }) {
+export default function WeatherBackground({ kind, isDay, level = 'full' }) {
+  if (level === 'off') return null;
+
+  const reduced = level === 'reduced';
   const clearSky = kind === 'clear' || kind === 'partly';
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {isDay && clearSky && <SunGlow strength={kind === 'clear' ? 1 : 0.55} />}
-      {!isDay && clearSky && <Stars count={kind === 'clear' ? 26 : 10} />}
+      {isDay && clearSky && (
+        <SunGlow strength={kind === 'clear' ? 1 : 0.55} spinDuration={reduced ? 400000 : 140000} />
+      )}
+      {!isDay && clearSky && <Stars count={scaled(kind === 'clear' ? 26 : 10, reduced)} />}
       {!isDay && clearSky && <Moon />}
+      {!isDay && clearSky && !reduced && <ShootingStar />}
 
       {(CLOUD_SETS[kind] ?? []).map((cloud, i) => <Cloud key={i} {...cloud} />)}
       {kind === 'fog' && FOG_BANDS.map((band, i) => <FogBand key={i} {...band} />)}
 
-      {kind === 'rain' && <RainLayer count={44} />}
-      {kind === 'storm' && <RainLayer count={80} heavy />}
-      {kind === 'snow' && <SnowLayer />}
-      {kind === 'storm' && <Lightning />}
+      {kind === 'rain' && <RainLayer count={scaled(44, reduced)} />}
+      {kind === 'storm' && <RainLayer count={scaled(80, reduced)} heavy />}
+      {kind === 'snow' && <SnowLayer count={scaled(40, reduced)} />}
+      {kind === 'storm' && !reduced && <Lightning />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { ...StyleSheet.absoluteFillObject },
-  // Soleil placé sous la barre du haut, pour ne pas gêner les boutons
   sun: { position: 'absolute', top: -30, right: -110, width: 300, height: 300 },
   ray: {
     position: 'absolute',
@@ -362,5 +430,6 @@ const styles = StyleSheet.create({
     borderRadius: 90,
     backgroundColor: 'rgba(226, 232, 240, 0.12)',
   },
+  shootingStar: { position: 'absolute', top: '12%', left: '92%', width: 120, height: 2 },
   bolt: { position: 'absolute', top: 40, left: '58%' },
 });

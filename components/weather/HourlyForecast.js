@@ -4,7 +4,9 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import GlassCard from '../ui/GlassCard';
+import SectionTitle from '../ui/SectionTitle';
 import TemperatureCurve from './TemperatureCurve';
+import { useUnits } from '../../contexts/SettingsContext';
 import { COLORS } from '../../constants/theme';
 
 const COLUMN_WIDTH = 60;
@@ -28,10 +30,10 @@ const RainBar = ({ prob }) => {
   );
 };
 
-const WindValue = ({ hour }) => (
+const WindValue = ({ hour, wind, unitLabel }) => (
   <View style={[styles.modeBox, { height: 60 }]}>
-    <Text style={styles.windSpeed}>{hour.windSpeed}</Text>
-    <Text style={styles.unit}>km/h</Text>
+    <Text style={styles.windSpeed}>{wind(hour.windSpeed)}</Text>
+    <Text style={styles.unit}>{unitLabel}</Text>
     {/* La flèche indique vers où le vent souffle */}
     <Ionicons
       name="arrow-up"
@@ -44,21 +46,26 @@ const WindValue = ({ hour }) => (
 
 export default function HourlyForecast({ hours }) {
   const [mode, setMode] = useState('rain');
+  const { temp, wind, windUnit } = useUnits();
   if (!hours.length) return null;
 
   return (
     <View style={styles.section}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Prévisions sur 24h</Text>
-        <View style={styles.toggle}>
-          <TouchableOpacity style={[styles.toggleBtn, mode === 'rain' && styles.toggleActive]} onPress={() => setMode('rain')}>
-            <Ionicons name="water" size={16} color={mode === 'rain' ? COLORS.rain : COLORS.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.toggleBtn, mode === 'wind' && styles.toggleActive]} onPress={() => setMode('wind')}>
-            <Ionicons name="leaf" size={16} color={mode === 'wind' ? '#10B981' : COLORS.textMuted} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <SectionTitle
+        icon="time-outline"
+        right={
+          <View style={styles.toggle}>
+            <TouchableOpacity style={[styles.toggleBtn, mode === 'rain' && styles.toggleActive]} onPress={() => setMode('rain')}>
+              <Ionicons name="water" size={16} color={mode === 'rain' ? COLORS.accent : COLORS.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.toggleBtn, mode === 'wind' && styles.toggleActive]} onPress={() => setMode('wind')}>
+              <Ionicons name="leaf" size={16} color={mode === 'wind' ? COLORS.wind : COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+        }
+      >
+        Prochaines 24 h
+      </SectionTitle>
 
       <GlassCard style={{ paddingVertical: 16 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
@@ -72,12 +79,12 @@ export default function HourlyForecast({ hours }) {
             />
             {hours.map((hour, i) => (
               <View key={i} style={styles.column}>
-                <Text style={styles.temp}>{hour.temp}°</Text>
+                <Text style={styles.temp}>{temp(hour.temp)}</Text>
                 <Ionicons name={hour.iconInfo.name} size={20} color={hour.iconInfo.color} style={{ marginBottom: 6 }} />
                 <View style={{ height: 45 }} />
                 <View style={{ flex: 1 }} />
-                {mode === 'rain' ? <RainBar prob={hour.rainProb} /> : <WindValue hour={hour} />}
-                <Text style={styles.time}>{hour.time}</Text>
+                {mode === 'rain' ? <RainBar prob={hour.rainProb} /> : <WindValue hour={hour} wind={wind} unitLabel={windUnit} />}
+                <Text style={[styles.time, i === 0 && styles.timeNow]}>{i === 0 ? 'Maint.' : hour.time}</Text>
               </View>
             ))}
           </View>
@@ -88,10 +95,8 @@ export default function HourlyForecast({ hours }) {
 }
 
 const styles = StyleSheet.create({
-  section: { marginBottom: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  title: { color: COLORS.text, fontSize: 18, fontWeight: '600' },
-  toggle: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 20, padding: 4 },
+  section: { marginBottom: 36 },
+  toggle: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 20, padding: 3 },
   toggleBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
   toggleActive: { backgroundColor: 'rgba(255,255,255,0.2)' },
   chart: { flexDirection: 'row', alignItems: 'flex-end', height: 220 },
@@ -102,4 +107,5 @@ const styles = StyleSheet.create({
   windSpeed: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
   unit: { color: COLORS.textMuted, fontSize: 10 },
   time: { color: COLORS.textSecondary, fontSize: 12 },
+  timeNow: { color: COLORS.text, fontWeight: '700' },
 });

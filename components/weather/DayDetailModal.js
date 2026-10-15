@@ -1,8 +1,9 @@
-// Détail d'une journée : stats et courbe heure par heure, dans une feuille du bas.
+// Détail d'une journée : statistiques et courbe heure par heure, dans une feuille du bas.
 
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import TemperatureCurve from './TemperatureCurve';
+import { useUnits } from '../../contexts/SettingsContext';
 import { COLORS } from '../../constants/theme';
 
 const COLUMN_WIDTH = 60;
@@ -17,9 +18,9 @@ const Stat = ({ icon, color, value, label }) => (
   </View>
 );
 
-const HourColumn = ({ hour }) => (
+const HourColumn = ({ hour, temp }) => (
   <View style={styles.column}>
-    <Text style={styles.temp}>{hour.temp}°</Text>
+    <Text style={styles.temp}>{temp(hour.temp)}</Text>
     <Ionicons name={hour.iconInfo.name} size={18} color={hour.iconInfo.color} style={{ marginBottom: 4 }} />
     <View style={{ flex: 1 }} />
     <View style={styles.rainBox}>
@@ -38,6 +39,7 @@ const HourColumn = ({ hour }) => (
 );
 
 export default function DayDetailModal({ day, onClose }) {
+  const { temp } = useUnits();
   const hours = day.hours;
   const cumul = String(day.precipitationSum).replace('.', ',');
 
@@ -49,12 +51,12 @@ export default function DayDetailModal({ day, onClose }) {
           <View style={styles.handle} />
 
           <View style={styles.header}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-              <Ionicons name={day.iconInfo.name} size={28} color={day.iconInfo.color} />
+            <View style={styles.headerLeft}>
+              <Ionicons name={day.iconInfo.name} size={30} color={day.iconInfo.color} />
               <View>
                 <Text style={styles.title}>{day.day}</Text>
                 <Text style={styles.subtitle}>
-                  {day.min}° / {day.max}° · Pluie {day.rainProb}%
+                  {temp(day.min)} / {temp(day.max)} · Pluie {day.rainProb}%
                 </Text>
               </View>
             </View>
@@ -82,7 +84,7 @@ export default function DayDetailModal({ day, onClose }) {
                       height={CURVE_HEIGHT}
                       gradientId="dayTempGradient"
                     />
-                    {hours.map((hour, i) => <HourColumn key={i} hour={hour} />)}
+                    {hours.map((hour, i) => <HourColumn key={i} hour={hour} temp={temp} />)}
                   </View>
                 </ScrollView>
               </View>
@@ -108,9 +110,10 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 20,
   },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)', alignSelf: 'center', marginBottom: 12 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)', alignSelf: 'center', marginBottom: 14 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 16 },
-  title: { color: COLORS.text, fontSize: 20, fontWeight: '700' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  title: { color: COLORS.text, fontSize: 21, fontWeight: '700' },
   subtitle: { color: COLORS.textMuted, fontSize: 13, marginTop: 2 },
   stats: { flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 16 },
   stat: {
@@ -118,7 +121,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingVertical: 10,
-    borderRadius: 14,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
@@ -129,7 +132,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     paddingVertical: 16,
-    borderRadius: 20,
+    borderRadius: 22,
     backgroundColor: COLORS.glass,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,

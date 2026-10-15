@@ -1,7 +1,9 @@
 import { FlexWidget, TextWidget, registerWidgetTaskHandler } from 'react-native-android-widget';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SETTINGS_KEY, DEFAULT_SETTINGS } from '../constants/settings';
+import { formatTemp, formatWind, windLabel } from './units';
 
-// Récupérer les données en cache
+// Récupère la position actuelle depuis le cache de l'application
 async function getWidgetData() {
   try {
     const cached = await AsyncStorage.getItem('weather_locations');
@@ -15,6 +17,16 @@ async function getWidgetData() {
     console.error(e);
   }
   return null;
+}
+
+// Mêmes unités que l'application
+async function getWidgetSettings() {
+  try {
+    const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+    return { ...DEFAULT_SETTINGS, ...(raw ? JSON.parse(raw) : {}) };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
 }
 
 // Convertir le code météo en emoji
@@ -33,9 +45,8 @@ function getWeatherEmoji(weatherCode, rainProb = 0) {
   return '🌤️';
 }
 
-// Widget météo 4x2 (vertical layout)
-function WeatherWidgetComponent({ location }) {
-  // État vide si pas de données
+// Widget météo 4x2
+function WeatherWidgetComponent({ location, settings }) {
   if (!location || !location.data) {
     return (
       <FlexWidget
@@ -48,36 +59,27 @@ function WeatherWidgetComponent({ location }) {
           padding: 12,
         }}
       >
-        <TextWidget
-          text="🌤️"
-          style={{ fontSize: 32, color: '#FFFFFF', textAlign: 'center' }}
-        />
-        <TextWidget
-          text="Ma Météo"
-          style={{ fontSize: 14, color: '#9CA3AF', marginTop: 8, textAlign: 'center' }}
-        />
-        <TextWidget
-          text="En attente des données..."
-          style={{ fontSize: 11, color: '#6B7280', marginTop: 4, textAlign: 'center' }}
-        />
+        <TextWidget text="🌤️" style={{ fontSize: 32, color: '#FFFFFF', textAlign: 'center' }} />
+        <TextWidget text="Ma Météo" style={{ fontSize: 14, color: '#9CA3AF', marginTop: 8, textAlign: 'center' }} />
+        <TextWidget text="En attente des données..." style={{ fontSize: 11, color: '#6B7280', marginTop: 4, textAlign: 'center' }} />
       </FlexWidget>
     );
   }
 
   const { current, daily, hourly } = location.data;
+  const unit = settings.temperatureUnit;
   const cityName = location.name || 'Ma Position';
-  const temp = current.temp;
-  const feelsLike = current.apparentTemp || temp;
+  const temp = formatTemp(current.temp, unit);
+  const feelsLike = formatTemp(current.apparentTemp ?? current.temp, unit);
   const humidity = current.humidity || 0;
   const summary = current.summary || '';
   const weatherCode = current.weatherCode || 0;
   const rainProb = current.rainProb || 0;
-  const todayMin = daily?.[0]?.min ?? '--';
-  const todayMax = daily?.[0]?.max ?? '--';
-  const windSpeed = hourly?.[0]?.windSpeed ?? '--';
+  const todayMin = daily?.[0] ? formatTemp(daily[0].min, unit) : '--';
+  const todayMax = daily?.[0] ? formatTemp(daily[0].max, unit) : '--';
+  const windSpeed = hourly?.[0] ? `${formatWind(hourly[0].windSpeed, settings.windUnit)} ${windLabel(settings.windUnit)}` : '--';
   const emoji = getWeatherEmoji(weatherCode, rainProb);
 
-  // Couleur de fond selon météo
   const isRainy = rainProb >= 40 || (weatherCode >= 51 && weatherCode <= 82);
   const isThunder = weatherCode >= 95;
   const bgColor = isThunder ? '#1E293B' : isRainy ? '#1E3A5F' : '#0f172a';
@@ -93,123 +95,54 @@ function WeatherWidgetComponent({ location }) {
         justifyContent: 'space-between',
       }}
     >
-      {/* === LIGNE 1 : Ville + Emoji === */}
-      <FlexWidget
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <TextWidget
-          text={cityName}
-          style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 'bold' }}
-          maxLines={1}
-        />
-        <TextWidget
-          text={emoji}
-          style={{ fontSize: 22 }}
-        />
+      <FlexWidget style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <TextWidget text={cityName} style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 'bold' }} maxLines={1} />
+        <TextWidget text={emoji} style={{ fontSize: 22 }} />
       </FlexWidget>
 
-      {/* === LIGNE 2 : Température principale === */}
-      <FlexWidget
-        style={{
-          alignItems: 'flex-start',
-          marginTop: 2,
-        }}
-      >
+      <FlexWidget style={{ alignItems: 'flex-start', marginTop: 2 }}>
         <TextWidget
-          text={`${temp}°`}
-          style={{
-            fontSize: 52,
-            color: '#FFFFFF',
-            fontWeight: 'bold',
-            includeFontPadding: false,
-          }}
+          text={temp}
+          style={{ fontSize: 52, color: '#FFFFFF', fontWeight: 'bold', includeFontPadding: false }}
         />
-        <TextWidget
-          text={`Ressenti ${feelsLike}°`}
-          style={{ fontSize: 11, color: '#9CA3AF', marginTop: -4 }}
-        />
+        <TextWidget text={`Ressenti ${feelsLike}`} style={{ fontSize: 11, color: '#9CA3AF', marginTop: -4 }} />
       </FlexWidget>
 
-      {/* === LIGNE 3 : Description === */}
-      <TextWidget
-        text={summary}
-        style={{ fontSize: 11, color: '#60A5FA', marginTop: 2 }}
-        maxLines={2}
-      />
+      <TextWidget text={summary} style={{ fontSize: 11, color: '#60A5FA', marginTop: 2 }} maxLines={2} />
 
-      {/* === SÉPARATEUR === */}
-      <FlexWidget
-        style={{
-          height: 1,
-          backgroundColor: 'rgba(255,255,255,0.1)',
-          marginVertical: 8,
-        }}
-      />
+      <FlexWidget style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 8 }} />
 
-      {/* === LIGNE 4 : Min / Max === */}
-      <FlexWidget
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <FlexWidget style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TextWidget text="↓ " style={{ fontSize: 11, color: '#93C5FD' }} />
-          <TextWidget text={`${todayMin}°`} style={{ fontSize: 13, color: '#93C5FD', fontWeight: 'bold' }} />
+          <TextWidget text={todayMin} style={{ fontSize: 13, color: '#93C5FD', fontWeight: 'bold' }} />
         </FlexWidget>
         <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TextWidget text="↑ " style={{ fontSize: 11, color: '#FBBF24' }} />
-          <TextWidget text={`${todayMax}°`} style={{ fontSize: 13, color: '#FBBF24', fontWeight: 'bold' }} />
+          <TextWidget text={todayMax} style={{ fontSize: 13, color: '#FBBF24', fontWeight: 'bold' }} />
         </FlexWidget>
       </FlexWidget>
 
-      {/* === LIGNE 5 : Pluie + Humidité + Vent === */}
-      <FlexWidget
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginTop: 6,
-        }}
-      >
+      <FlexWidget style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
         <FlexWidget style={{ alignItems: 'center', flex: 1 }}>
           <TextWidget text="🌧️" style={{ fontSize: 14 }} />
-          <TextWidget
-            text={`${rainProb}%`}
-            style={{ fontSize: 12, color: '#60A5FA', fontWeight: 'bold', marginTop: 2 }}
-          />
+          <TextWidget text={`${rainProb}%`} style={{ fontSize: 12, color: '#60A5FA', fontWeight: 'bold', marginTop: 2 }} />
           <TextWidget text="Pluie" style={{ fontSize: 9, color: '#6B7280' }} />
         </FlexWidget>
 
-        <FlexWidget
-          style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' }}
-        />
+        <FlexWidget style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' }} />
 
         <FlexWidget style={{ alignItems: 'center', flex: 1 }}>
           <TextWidget text="💧" style={{ fontSize: 14 }} />
-          <TextWidget
-            text={`${humidity}%`}
-            style={{ fontSize: 12, color: '#93C5FD', fontWeight: 'bold', marginTop: 2 }}
-          />
+          <TextWidget text={`${humidity}%`} style={{ fontSize: 12, color: '#93C5FD', fontWeight: 'bold', marginTop: 2 }} />
           <TextWidget text="Humidité" style={{ fontSize: 9, color: '#6B7280' }} />
         </FlexWidget>
 
-        <FlexWidget
-          style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' }}
-        />
+        <FlexWidget style={{ width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' }} />
 
         <FlexWidget style={{ alignItems: 'center', flex: 1 }}>
           <TextWidget text="💨" style={{ fontSize: 14 }} />
-          <TextWidget
-            text={`${windSpeed}`}
-            style={{ fontSize: 12, color: '#A7F3D0', fontWeight: 'bold', marginTop: 2 }}
-          />
-          <TextWidget text="km/h" style={{ fontSize: 9, color: '#6B7280' }} />
+          <TextWidget text={windSpeed} style={{ fontSize: 12, color: '#A7F3D0', fontWeight: 'bold', marginTop: 2 }} />
         </FlexWidget>
       </FlexWidget>
     </FlexWidget>
@@ -217,10 +150,10 @@ function WeatherWidgetComponent({ location }) {
 }
 
 export async function widgetTaskHandler(props) {
-  const location = await getWidgetData();
+  const [location, settings] = await Promise.all([getWidgetData(), getWidgetSettings()]);
 
   if (props.widgetName === 'WeatherWidget') {
-    props.renderWidget(<WeatherWidgetComponent location={location} />);
+    props.renderWidget(<WeatherWidgetComponent location={location} settings={settings} />);
   }
 }
 

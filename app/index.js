@@ -1,13 +1,16 @@
 // Écran principal : barre du haut, pages des villes (glisser horizontalement) et recherche.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import useLocations, { MAX_CITIES } from '../hooks/useLocations';
+import { useLocationsContext } from '../contexts/LocationsContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { MAX_CITIES } from '../hooks/useLocations';
 import useNow from '../hooks/useNow';
+import SkyBackdrop from '../components/weather/SkyBackdrop';
 import WeatherBackground from '../components/weather/WeatherBackground';
 import WeatherPage from '../components/weather/WeatherPage';
 import CitySearchModal from '../components/CitySearchModal';
@@ -25,25 +28,32 @@ if (!isExpoGo) {
   }
 }
 
-// Ciels de test (bouton fiole) pour vérifier les animations sans attendre la météo
-const TEST_SKIES = [
-  { label: 'Soleil', kind: 'clear', isDay: true },
-  { label: 'Nuages', kind: 'partly', isDay: true },
-  { label: 'Pluie', kind: 'rain', isDay: true },
-  { label: 'Orage', kind: 'storm', isDay: true },
-  { label: 'Neige', kind: 'snow', isDay: true },
-  { label: 'Nuit', kind: 'clear', isDay: false },
-];
+const IconButton = ({ icon, onPress, tone = 'default', disabled = false }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    disabled={disabled}
+    hitSlop={8}
+    activeOpacity={0.7}
+    style={[styles.iconBtn, tone === 'primary' && styles.iconPrimary, disabled && styles.iconDisabled]}
+  >
+    <Ionicons
+      name={icon}
+      size={tone === 'primary' ? 24 : 20}
+      color={tone === 'danger' ? '#FCA5A5' : COLORS.text}
+    />
+  </TouchableOpacity>
+);
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
-  const { locations, ready, addCity, removeCity, refresh } = useLocations();
+  const { locations, ready, addCity, removeCity, refresh } = useLocationsContext();
+  const { settings, previewSky, setPreviewSky } = useSettings();
   const now = useNow();
 
   const pagerRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
-  const [testIndex, setTestIndex] = useState(null);
 
   const goTo = useCallback((index, animated = true) => {
     setActiveIndex(index);
@@ -58,18 +68,10 @@ export default function HomeScreen() {
   }, [locations.length, activeIndex, goTo]);
 
   const active = locations[Math.min(activeIndex, locations.length - 1)];
-  const test = testIndex === null ? null : TEST_SKIES[testIndex];
 
-  const kind = test ? test.kind : getKind(active?.data?.current.weatherCode);
-  const isDay = test ? test.isDay : (active?.data?.current.isDay ?? true);
-  const gradient = getBackgroundColors(kind, isDay);
-
-  // Parcourt les ciels de test, puis revient à la météo réelle
-  const cycleTest = () =>
-    setTestIndex((i) => {
-      if (i === null) return 0;
-      return i === TEST_SKIES.length - 1 ? null : i + 1;
-    });
+  const kind = previewSky ? previewSky.kind : getKind(active?.data?.current.weatherCode);
+  const isDay = previewSky ? previewSky.isDay : (active?.data?.current.isDay ?? true);
+  const colors = getBackgroundColors(kind, isDay);
 
   const confirmRemove = (location) => {
     if (location.isLocal) return;
@@ -82,7 +84,7 @@ export default function HomeScreen() {
   const handleSelectCity = (city) => {
     const result = addCity(city);
     if (result === 'limit') {
-      Alert.alert('Limite atteinte', `Vous pouvez suivre jusqu'à ${MAX_CITIES} villes.`);
+      Alert.alert('Limite atteinte', `Vous pouvez suivre jusqu'à ${MAX_CITIES} emplacements, position comprise.`);
       return;
     }
     if (result === 'duplicate') {
@@ -90,48 +92,47 @@ export default function HomeScreen() {
       return;
     }
     setShowSearch(false);
-    // La nouvelle ville est ajoutée en fin de liste
+    // La nouvelle ville est ajoutée en fin de liste : on s'y rend
     setTimeout(() => goTo(locations.length), 100);
   };
 
+  let subtitle = '';
+  if (previewSky) subtitle = `Aperçu : ${previewSky.label} · toucher pour quitter`;
+  else if (active?.lastRefreshed) subtitle = `Mis à jour il y a ${timeAgo(active.lastRefreshed, now)}`;
+  else if (active?.loading) subtitle = 'Actualisation…';
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <LinearGradient colors={gradient} style={styles.container}>
-        <WeatherBackground kind={kind} isDay={isDay} />
+      <View style={styles.container}>
+        <SkyBackdrop colors={colors} animated={settings.animations !== 'off'} />
+        <WeatherBackground kind={kind} isDay={isDay} level={settings.animations} />
 
         <View style={styles.topBar}>
-          <TouchableOpacity onPress={cycleTest} style={styles.iconBtn} hitSlop={8}>
-            <Ionicons name="flask" size={20} color={test ? '#10B981' : COLORS.text} />
-          </TouchableOpacity>
+          <IconButton icon="settings-outline" onPress={() => router.push('/settings')} />
 
-          <View style={styles.titleBox}>
-            {active?.lastRefreshed && !test ? (
-              <Text style={styles.updated}>Mis à jour il y a {timeAgo(active.lastRefreshed, now)}</Text>
-            ) : null}
+          <Pressable
+            style={styles.titlePill}
+            onPress={() => previewSky && setPreviewSky(null)}
+            disabled={!previewSky}
+          >
             <View style={styles.titleRow}>
               {active ? (
-                <Ionicons name={active.isLocal ? 'location-sharp' : 'map'} size={16} color={COLORS.text} />
+                <Ionicons name={active.isLocal ? 'location-sharp' : 'map'} size={14} color={COLORS.accent} />
               ) : null}
-              <Text style={styles.title} numberOfLines={1}>
-                {test ? `[TEST] ${test.label}` : active?.name ?? ''}
-              </Text>
+              <Text style={styles.title} numberOfLines={1}>{active?.name ?? ''}</Text>
             </View>
-          </View>
+            {subtitle ? (
+              <Text style={[styles.subtitle, previewSky && styles.subtitlePreview]} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </Pressable>
 
           <View style={styles.actions}>
             {active && !active.isLocal && (
-              <TouchableOpacity onPress={() => confirmRemove(active)} style={styles.iconBtn} hitSlop={8}>
-                <Ionicons name="trash-outline" size={20} color="#FCA5A5" />
-              </TouchableOpacity>
+              <IconButton icon="trash-outline" tone="danger" onPress={() => confirmRemove(active)} />
             )}
-            <TouchableOpacity
-              onPress={() => setShowSearch(true)}
-              style={styles.iconBtn}
-              hitSlop={8}
-              disabled={!ready}
-            >
-              <Ionicons name="add" size={26} color={COLORS.text} />
-            </TouchableOpacity>
+            <IconButton icon="add" tone="primary" onPress={() => setShowSearch(true)} disabled={!ready} />
           </View>
         </View>
 
@@ -153,7 +154,12 @@ export default function HomeScreen() {
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(e) => setActiveIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
+            scrollEventThrottle={16}
+            onScroll={(e) => {
+              // Le titre suit le défilement, sans attendre la fin du glissement
+              const index = Math.round(e.nativeEvent.contentOffset.x / width);
+              if (index !== activeIndex) setActiveIndex(index);
+            }}
           >
             {locations.map((loc) => (
               <View key={loc.id} style={{ width }}>
@@ -166,7 +172,7 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
         )}
-      </LinearGradient>
+      </View>
 
       {showSearch && (
         <CitySearchModal onClose={() => setShowSearch(false)} onSelect={handleSelectCity} />
@@ -183,26 +189,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 4,
-    gap: 6,
+    paddingTop: 6,
+    gap: 8,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(15, 23, 42, 0.55)',
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
   },
-  titleBox: { flex: 1, alignItems: 'center' },
-  updated: { color: COLORS.textMuted, fontSize: 11, marginBottom: 2 },
+  iconPrimary: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(59, 130, 246, 0.9)', borderColor: 'transparent' },
+  iconDisabled: { opacity: 0.4 },
+  titlePill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%' },
-  title: { color: COLORS.text, fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  actions: { flexDirection: 'row', gap: 6 },
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.35)', marginHorizontal: 4 },
-  dotActive: { backgroundColor: COLORS.text, width: 8, height: 8, borderRadius: 4 },
+  title: { color: COLORS.text, fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  subtitle: { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
+  subtitlePreview: { color: '#FCD34D', fontWeight: '600' },
+  actions: { flexDirection: 'row', gap: 8 },
+  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.35)', marginHorizontal: 3 },
+  dotActive: { width: 18, backgroundColor: COLORS.text },
 });
