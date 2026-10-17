@@ -13,8 +13,11 @@ Données fournies par [Open-Meteo](https://open-meteo.com) (gratuit, sans clé A
 - **Prévisions 24 h** (température, pluie ou vent) et **7 jours** (cumul de pluie, UV, lever et coucher).
 - **Radar de pluie** intégré, en aperçu et en plein écran (pluie, vent, nuages, température).
 - **Fond animé** selon le temps : soleil, nuages, pluie, orage avec éclairs, neige, brouillard, nuit étoilée.
-- **Widget Android** « Météo Actuelle » (4×2), mis à jour depuis le cache de l'application.
-- **Paramètres** : unités (°C/°F, km/h, m/s, mph), intensité des animations, mise à jour automatique au retour dans l'application, couche radar par défaut, affichage de la pluie dans l'heure et du radar, gestion des villes, aperçus de ciel pour tester les animations.
+- **Ouverture instantanée** : la dernière météo s'affiche tout de suite (remise à l'heure et au jour actuels), puis tout est rechargé en parallèle sans attendre le GPS.
+- **Mise à jour en arrière-plan** (toutes les 30 min par défaut) : météo et widget à jour même application fermée.
+- **Widget Android** « Météo Actuelle » (4×2) : heure de mise à jour, ouverture de l'application au toucher, rechargement automatique.
+- **Logo** soleil, nuage et pluie (icône adaptative Android avec version monochrome), généré par `scripts/make-icons.py`.
+- **Paramètres** : unités (°C/°F, km/h, m/s, mph), intensité des animations, actualisation à l'ouverture, fréquence de mise à jour en arrière-plan, couche radar par défaut, affichage de la pluie dans l'heure et du radar, gestion des villes, aperçus de ciel pour tester les animations.
 
 ## Installer l'application (APK)
 
@@ -51,11 +54,31 @@ utils/
   weatherFormat.js        Mise en forme des données brutes
   weatherCodes.js         Codes météo WMO : type de temps, libellé, icône
   format.js               Dates, phase lunaire, qualité de l'air
-  storage.js              Sauvegarde locale des villes
+  storage.js              Sauvegarde locale des villes (réponse brute, remise en forme à la lecture)
+  geo.js                  Position du téléphone et distances
+  weatherSync.js          Mise à jour des villes enregistrées sans l'interface
+  backgroundTask.js       Tâche de mise à jour en arrière-plan
   widgetTask.js           Widget Android
+scripts/
+  make-icons.py           Génère le logo et les icônes (python scripts/make-icons.py)
+```
+
+Après avoir changé le logo ou ajouté un module natif, un build local demande de régénérer le dossier `android` :
+
+```bash
+npx expo prebuild --clean --platform android
 ```
 
 ## Historique
+
+### 2.2.0
+
+- **Logo** : soleil derrière un nuage avec de la pluie, sur un ciel bleu. Icône adaptative Android, icône monochrome (Android 13+), écran de démarrage assorti. Nom affiché : « Ma Météo ».
+- **Ouverture rapide** : l'écran de démarrage passe directement à la dernière météo connue. Elle est recalculée pour l'heure actuelle (heure en cours, « Aujourd'hui », pluie dans l'heure), même si elle date de la veille. Toutes les villes se rechargent en parallèle ; la météo de la position part avec la dernière position connue, et n'est rechargée que si le téléphone a bougé de plus de 2 km.
+- **Actualisation à l'ouverture** réglée sur « Toujours » par défaut ; tant que l'application reste ouverte, l'affichage est remis à l'heure toutes les 5 minutes.
+- **Mise à jour en arrière-plan** (30 min, 1 h, 3 h ou désactivée) : l'application reprend aussitôt ces données à son retour au premier plan.
+- **Widget** : il ne s'affichait pas (mauvais nom de widget lu dans le gestionnaire) ; il s'ouvre maintenant au toucher, montre l'heure de mise à jour et recharge la météo si elle a plus de 25 minutes.
+- Réponse météo allégée (12 Ko au lieu de plusieurs dizaines) ; indicateur « Actualisation… » dans la barre du haut.
 
 ### 2.1.0
 

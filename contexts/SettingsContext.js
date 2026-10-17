@@ -2,10 +2,18 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_SETTINGS, SETTINGS_KEY } from '../constants/settings';
+import { DEFAULT_SETTINGS, SETTINGS_KEY, SETTINGS_VERSION } from '../constants/settings';
 import { formatTemp, formatWind, windLabel } from '../utils/units';
 
 const SettingsContext = createContext(null);
+
+// Réglages enregistrés par une ancienne version : l'actualisation à l'ouverture
+// passe à "Toujours", c'est désormais le comportement attendu.
+const migrate = (saved) => {
+  const merged = { ...DEFAULT_SETTINGS, ...saved };
+  if ((saved.version ?? 1) < 2) merged.autoRefresh = DEFAULT_SETTINGS.autoRefresh;
+  return { ...merged, version: SETTINGS_VERSION };
+};
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -16,7 +24,7 @@ export function SettingsProvider({ children }) {
     let cancelled = false;
     AsyncStorage.getItem(SETTINGS_KEY)
       .then((raw) => {
-        if (!cancelled && raw) setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) });
+        if (!cancelled && raw) setSettings(migrate(JSON.parse(raw)));
       })
       .catch(() => {})
       .finally(() => {

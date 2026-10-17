@@ -98,10 +98,20 @@ export default function SettingsScreen() {
 
         <Section icon="refresh-outline" title="Mise à jour">
           <SettingRow
-            label="Actualiser au retour dans l'app"
-            hint="Les villes dont les données sont plus anciennes que ce délai sont mises à jour."
+            label="Actualiser à l'ouverture"
+            hint="« Toujours » recharge la météo à chaque ouverture. Sinon, seulement si elle est plus ancienne que ce délai."
           >
             <Segmented options={OPTIONS.autoRefresh} value={settings.autoRefresh} onChange={set('autoRefresh')} />
+          </SettingRow>
+          <SettingRow
+            label="Mise à jour en arrière-plan"
+            hint="La météo et le widget se mettent à jour même application fermée. Android peut espacer ces mises à jour pour économiser la batterie."
+          >
+            <Segmented
+              options={OPTIONS.backgroundRefresh}
+              value={settings.backgroundRefresh}
+              onChange={set('backgroundRefresh')}
+            />
           </SettingRow>
           <SettingRow label="Couche du radar par défaut">
             <Segmented options={OPTIONS.radarLayer} value={settings.radarLayer} onChange={set('radarLayer')} />

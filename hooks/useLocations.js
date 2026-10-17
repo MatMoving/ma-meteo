@@ -1,35 +1,34 @@
 // Gère la liste des villes : position GPS, ajout, suppression, rafraîchissement
 // et sauvegarde. Chaque chargement a un délai maximum, donc rien ne reste
 // bloqué sur "Chargement" indéfiniment.
+//
+// À l'ouverture, tout s'affiche aussitôt depuis le cache (remis à l'heure actuelle),
+// puis la météo est rechargée en parallèle pour toutes les villes. La position n'est
+// pas attendue : la météo part avec la dernière position connue, et n'est rechargée
+// que si le téléphone a vraiment bougé.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import { fetchWeather } from '../utils/weatherApi';
-import { loadLocations, saveLocations } from '../utils/storage';
+import { loadLocations, reformat, saveLocations } from '../utils/storage';
+import { MOVE_THRESHOLD_KM, currentCoords, distanceKm, lastKnownCoords, placeName } from '../utils/geo';
 
 export const MAX_CITIES = 5;
 export const LOCAL_ID = 'local';
-const LOCATION_TIMEOUT = 10000;
+const DEFAULT_LOCAL_NAME = 'Ma position';
 
 const localPlaceholder = () => ({
   id: LOCAL_ID,
-  name: 'Ma position',
+  name: DEFAULT_LOCAL_NAME,
   latitude: null,
   longitude: null,
   isLocal: true,
+  raw: null,
   data: null,
   loading: false,
   error: null,
   lastRefreshed: null,
 });
-
-const withTimeout = (promise, ms) => {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('timeout')), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-};
 
 const describeError = (error) => {
   if (error?.code === 'ECONNABORTED' || error?.message === 'timeout') {
@@ -39,21 +38,25 @@ const describeError = (error) => {
   return 'Pas de connexion internet.';
 };
 
-const getCurrentPosition = async () => {
-  try {
-    return await withTimeout(
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-      LOCATION_TIMEOUT,
-    );
-  } catch {
-    return Location.getLastKnownPositionAsync({});
+const isStale = (loc, maxAgeMs) => !loc.lastRefreshed || Date.now() - loc.lastRefreshed > maxAgeMs;
+
+// Reprend une version sauvegardée plus récente (mise à jour faite en arrière-plan)
+const mergeSaved = (loc, saved, now) => {
+  if (saved?.raw && (saved.lastRefreshed ?? 0) > (loc.lastRefreshed ?? 0)) {
+    const position = loc.isLocal
+      ? { name: saved.name, latitude: saved.latitude, longitude: saved.longitude }
+      : {};
+    return { ...loc, ...position, raw: saved.raw, data: saved.data, lastRefreshed: saved.lastRefreshed, error: null };
   }
+  return reformat(loc, now);
 };
 
 export default function useLocations() {
   const [locations, setLocations] = useState([]);
   const [ready, setReady] = useState(false);
   const locationsRef = useRef(locations);
+  // Requête en cours par ville, pour ne jamais charger deux fois la même chose
+  const inFlight = useRef({});
 
   useEffect(() => {
     locationsRef.current = locations;
@@ -63,46 +66,68 @@ export default function useLocations() {
     setLocations((list) => list.map((loc) => (loc.id === id ? { ...loc, ...changes } : loc)));
   }, []);
 
-  const loadWeather = useCallback(async (id, latitude, longitude) => {
+  const loadWeather = useCallback((id, latitude, longitude) => {
+    const key = `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+    const running = inFlight.current[id];
+    if (running?.key === key) return running.promise;
+
     patch(id, { loading: true });
-    try {
-      const data = await fetchWeather(latitude, longitude);
-      patch(id, { data, error: null, loading: false, lastRefreshed: data.fetchedAt });
-    } catch (error) {
-      // On garde les anciennes données affichées, seule l'erreur change
-      patch(id, { error: describeError(error), loading: false });
-    }
+    const request = { key };
+    // Seule la requête la plus récente d'une ville a le droit de modifier l'affichage
+    const isLatest = () => inFlight.current[id] === request;
+    request.promise = (async () => {
+      try {
+        const { raw, data } = await fetchWeather(latitude, longitude);
+        if (isLatest()) patch(id, { raw, data, error: null, loading: false, lastRefreshed: raw.fetchedAt });
+      } catch (error) {
+        // On garde les anciennes données affichées, seule l'erreur change
+        if (isLatest()) patch(id, { error: describeError(error), loading: false });
+      } finally {
+        if (isLatest()) delete inFlight.current[id];
+      }
+    })();
+    inFlight.current[id] = request;
+    return request.promise;
   }, [patch]);
 
-  const locateLocal = useCallback(async () => {
-    patch(LOCAL_ID, { loading: true, error: null });
+  // maxAgeMs : la météo n'est rechargée avec l'ancienne position que si elle est plus vieille
+  const locateLocal = useCallback(async (maxAgeMs = 0) => {
+    const known = locationsRef.current.find((loc) => loc.isLocal);
+    const hasKnown = known?.latitude != null;
+
+    // 1. Météo tout de suite à la dernière position, sans attendre le GPS
+    const quick = hasKnown && isStale(known, maxAgeMs)
+      ? loadWeather(LOCAL_ID, known.latitude, known.longitude)
+      : null;
+    if (!hasKnown) patch(LOCAL_ID, { loading: true, error: null });
+
+    const fail = (error) => {
+      if (!hasKnown) patch(LOCAL_ID, { loading: false, error });
+      return quick;
+    };
+
+    // 2. En parallèle, vérifie si le téléphone a bougé
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        patch(LOCAL_ID, { loading: false, error: 'Localisation refusée. Autorisez-la dans les réglages.' });
-        return;
+      if (status !== 'granted') return fail('Localisation refusée. Autorisez-la dans les réglages.');
+
+      const coords = (await lastKnownCoords()) ?? (await currentCoords());
+      if (!coords) return fail('Position introuvable. Vérifiez que le GPS est activé.');
+
+      const moved = distanceKm(known, coords) > MOVE_THRESHOLD_KM;
+      if (moved || !known?.name || known.name === DEFAULT_LOCAL_NAME) {
+        placeName(coords).then((name) => name && patch(LOCAL_ID, { name }));
       }
+      if (!moved) return quick;
 
-      const position = await getCurrentPosition();
-      if (!position) {
-        patch(LOCAL_ID, { loading: false, error: 'Position introuvable. Vérifiez que le GPS est activé.' });
-        return;
-      }
-
-      const { latitude, longitude } = position.coords;
-      const [place] = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
-      const name = place
-        ? [place.city ?? place.subregion ?? place.region, place.isoCountryCode].filter(Boolean).join(', ')
-        : 'Ma position';
-
-      patch(LOCAL_ID, { name: name || 'Ma position', latitude, longitude });
-      await loadWeather(LOCAL_ID, latitude, longitude);
+      patch(LOCAL_ID, { latitude: coords.latitude, longitude: coords.longitude });
+      return loadWeather(LOCAL_ID, coords.latitude, coords.longitude);
     } catch {
-      patch(LOCAL_ID, { loading: false, error: 'Impossible de déterminer votre position.' });
+      return fail('Impossible de déterminer votre position.');
     }
   }, [patch, loadWeather]);
 
-  // Chargement initial : cache, puis position, puis mise à jour des villes enregistrées
+  // Chargement initial : cache affiché aussitôt, puis mise à jour de tout en parallèle
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -111,11 +136,17 @@ export default function useLocations() {
 
       const local = cached.find((loc) => loc.isLocal) ?? localPlaceholder();
       const cities = cached.filter((loc) => !loc.isLocal);
-      setLocations([local, ...cities]);
+      const list = [local, ...cities];
+      locationsRef.current = list;
+      setLocations(list);
       setReady(true);
 
-      locateLocal();
-      cities.forEach((city) => loadWeather(city.id, city.latitude, city.longitude));
+      // Données de moins de 2 minutes (mise à jour en arrière-plan) : déjà à jour
+      const OPEN_MAX_AGE = 2 * 60 * 1000;
+      locateLocal(OPEN_MAX_AGE);
+      cities
+        .filter((city) => isStale(city, OPEN_MAX_AGE))
+        .forEach((city) => loadWeather(city.id, city.latitude, city.longitude));
     })();
     return () => {
       cancelled = true;
@@ -126,6 +157,25 @@ export default function useLocations() {
   useEffect(() => {
     if (ready) saveLocations(locations);
   }, [locations, ready]);
+
+  // Retour dans l'application : reprend les données mises à jour en arrière-plan,
+  // remet l'affichage à l'heure, puis recharge ce qui est plus vieux que maxAgeMs.
+  const resume = useCallback(async (maxAgeMs) => {
+    const saved = await loadLocations();
+    const byId = new Map(saved.map((loc) => [loc.id, loc]));
+    const now = Date.now();
+    const merge = (loc) => mergeSaved(loc, byId.get(loc.id), now);
+
+    const merged = locationsRef.current.map(merge);
+    locationsRef.current = merged;
+    setLocations((list) => list.map(merge));
+
+    if (maxAgeMs == null) return;
+    locateLocal(maxAgeMs);
+    merged
+      .filter((loc) => !loc.isLocal && isStale(loc, maxAgeMs))
+      .forEach((loc) => loadWeather(loc.id, loc.latitude, loc.longitude));
+  }, [locateLocal, loadWeather]);
 
   // Retourne 'added', 'duplicate' ou 'limit'
   const addCity = useCallback((city) => {
@@ -149,6 +199,7 @@ export default function useLocations() {
         latitude: city.latitude,
         longitude: city.longitude,
         isLocal: false,
+        raw: null,
         data: null,
         loading: true,
         error: null,
@@ -166,9 +217,9 @@ export default function useLocations() {
   const refresh = useCallback((id) => {
     const loc = locationsRef.current.find((item) => item.id === id);
     if (!loc) return Promise.resolve();
-    if (loc.isLocal) return locateLocal();
+    if (loc.isLocal) return locateLocal(0);
     return loadWeather(id, loc.latitude, loc.longitude);
   }, [locateLocal, loadWeather]);
 
-  return { locations, ready, addCity, removeCity, refresh };
+  return { locations, ready, addCity, removeCity, refresh, resume };
 }

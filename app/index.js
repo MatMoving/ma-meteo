@@ -97,9 +97,10 @@ export default function HomeScreen() {
   };
 
   let subtitle = '';
+  const updating = !previewSky && !!active?.loading;
   if (previewSky) subtitle = `Aperçu : ${previewSky.label} · toucher pour quitter`;
-  else if (active?.lastRefreshed) subtitle = `Mis à jour il y a ${timeAgo(active.lastRefreshed, now)}`;
-  else if (active?.loading) subtitle = 'Actualisation…';
+  else if (updating) subtitle = 'Actualisation…';
+  else if (active?.lastRefreshed) subtitle = `Mis à jour ${timeAgo(active.lastRefreshed, now)}`;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -122,9 +123,12 @@ export default function HomeScreen() {
               <Text style={styles.title} numberOfLines={1}>{active?.name ?? ''}</Text>
             </View>
             {subtitle ? (
-              <Text style={[styles.subtitle, previewSky && styles.subtitlePreview]} numberOfLines={1}>
-                {subtitle}
-              </Text>
+              <View style={styles.titleRow}>
+                {updating ? <ActivityIndicator size={10} color={COLORS.textMuted} /> : null}
+                <Text style={[styles.subtitle, previewSky && styles.subtitlePreview]} numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              </View>
             ) : null}
           </Pressable>
 
@@ -182,7 +186,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0A0A0A' },
+  safeArea: { flex: 1, backgroundColor: '#0B1736' },
   container: { flex: 1, overflow: 'hidden' },
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   topBar: {

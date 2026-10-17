@@ -1,23 +1,25 @@
-import { FlexWidget, TextWidget, registerWidgetTaskHandler } from 'react-native-android-widget';
+import { FlexWidget, TextWidget, registerWidgetTaskHandler, requestWidgetUpdate } from 'react-native-android-widget';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_KEY, DEFAULT_SETTINGS } from '../constants/settings';
 import { formatTemp, formatWind, windLabel } from './units';
+import { loadLocations } from './storage';
+import { refreshSavedLocations } from './weatherSync';
 
-// Récupère la position actuelle depuis le cache de l'application
+const WIDGET_NAME = 'WeatherWidget';
+// Au-delà, le widget recharge lui-même la météo avant de s'afficher
+const WIDGET_MAX_AGE = 25 * 60 * 1000;
+
+// Première ville (la position actuelle), remise à l'heure actuelle
 async function getWidgetData() {
-  try {
-    const cached = await AsyncStorage.getItem('weather_locations');
-    if (cached) {
-      const locations = JSON.parse(cached);
-      if (locations.length > 0 && locations[0].data) {
-        return locations[0];
-      }
-    }
-  } catch (e) {
-    console.error(e);
-  }
-  return null;
+  const locations = await loadLocations();
+  return locations.find((loc) => loc.data) ?? null;
 }
+
+const pad = (n) => String(n).padStart(2, '0');
+const clock = (timestamp) => {
+  const date = new Date(timestamp);
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 // Mêmes unités que l'application
 async function getWidgetSettings() {
@@ -50,6 +52,7 @@ function WeatherWidgetComponent({ location, settings }) {
   if (!location || !location.data) {
     return (
       <FlexWidget
+        clickAction="OPEN_APP"
         style={{
           flex: 1,
           backgroundColor: '#0f172a',
@@ -86,6 +89,7 @@ function WeatherWidgetComponent({ location, settings }) {
 
   return (
     <FlexWidget
+      clickAction="OPEN_APP"
       style={{
         flex: 1,
         flexDirection: 'column',
@@ -96,7 +100,12 @@ function WeatherWidgetComponent({ location, settings }) {
       }}
     >
       <FlexWidget style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <TextWidget text={cityName} style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 'bold' }} maxLines={1} />
+        <FlexWidget style={{ flex: 1 }}>
+          <TextWidget text={cityName} style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 'bold' }} maxLines={1} />
+          {location.lastRefreshed ? (
+            <TextWidget text={`Mis à jour à ${clock(location.lastRefreshed)}`} style={{ fontSize: 9, color: '#6B7280' }} />
+          ) : null}
+        </FlexWidget>
         <TextWidget text={emoji} style={{ fontSize: 22 }} />
       </FlexWidget>
 
@@ -149,12 +158,32 @@ function WeatherWidgetComponent({ location, settings }) {
   );
 }
 
-export async function widgetTaskHandler(props) {
+async function renderCurrent() {
   const [location, settings] = await Promise.all([getWidgetData(), getWidgetSettings()]);
+  return <WeatherWidgetComponent location={location} settings={settings} />;
+}
 
-  if (props.widgetName === 'WeatherWidget') {
-    props.renderWidget(<WeatherWidgetComponent location={location} settings={settings} />);
+// Redessine le widget avec les données enregistrées (après une mise à jour en arrière-plan)
+export async function updateWeatherWidget() {
+  try {
+    await requestWidgetUpdate({ widgetName: WIDGET_NAME, renderWidget: renderCurrent });
+  } catch {
+    // Pas de widget sur l'écran d'accueil
   }
+}
+
+export async function widgetTaskHandler(props) {
+  if (props.widgetInfo.widgetName !== WIDGET_NAME || props.widgetAction === 'WIDGET_DELETED') return;
+
+  // Mise à jour périodique d'Android : recharge la météo si elle est trop ancienne
+  if (props.widgetAction === 'WIDGET_UPDATE' || props.widgetAction === 'WIDGET_ADDED') {
+    const location = await getWidgetData();
+    if (!location?.lastRefreshed || Date.now() - location.lastRefreshed > WIDGET_MAX_AGE) {
+      await refreshSavedLocations({ maxAgeMs: WIDGET_MAX_AGE, timeoutMs: 8000 }).catch(() => {});
+    }
+  }
+
+  props.renderWidget(await renderCurrent());
 }
 
 registerWidgetTaskHandler(widgetTaskHandler);

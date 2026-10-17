@@ -32,10 +32,12 @@ export const daylightLabel = (sunrise, sunset) => {
 
 export const timeAgo = (timestamp, now = Date.now()) => {
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
-  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 60) return "à l'instant";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h`;
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  return `il y a ${Math.floor(hours / 24)} j`;
 };
 
 // Phase lunaire approximée à partir d'une nouvelle lune de référence (6 janvier 2000).
