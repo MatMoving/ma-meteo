@@ -16,12 +16,15 @@ Données fournies par [Open-Meteo](https://open-meteo.com) (gratuit, sans clé A
 - **Ouverture instantanée** : la dernière météo s'affiche tout de suite (remise à l'heure et au jour actuels), puis tout est rechargé en parallèle sans attendre le GPS.
 - **Mise à jour en arrière-plan** (toutes les 30 min par défaut) : météo et widget à jour même application fermée.
 - **Widget Android** « Météo Actuelle » (4×2) : heure de mise à jour, ouverture de l'application au toucher, rechargement automatique.
+- **Mises à jour proposées** : l'accueil signale une nouvelle version publiée dans les Releases GitHub (« Installer » télécharge l'APK) ; bouton « Rechercher une mise à jour » dans les paramètres.
 - **Logo** soleil, nuage et pluie (icône adaptative Android avec version monochrome), généré par `scripts/make-icons.py`.
 - **Paramètres** : unités (°C/°F, km/h, m/s, mph), intensité des animations, actualisation à l'ouverture, fréquence de mise à jour en arrière-plan, couche radar par défaut, affichage de la pluie dans l'heure et du radar, gestion des villes, aperçus de ciel pour tester les animations.
 
 ## Installer l'application (APK)
 
-Une fois l'APK généré (voir ci-dessous), téléchargez-le sur le téléphone, autorisez l'installation depuis les sources inconnues, puis installez-le.
+Téléchargez l'APK de la [dernière version](https://github.com/MatMoving/ma-meteo/releases/latest) sur le téléphone, autorisez l'installation depuis les sources inconnues, puis installez-le. Une nouvelle version s'installe par-dessus l'ancienne (villes et réglages conservés), tant qu'elle est signée avec la même clé.
+
+À partir de la 2.2.0, l'application propose elle-même les nouvelles versions publiées dans les Releases.
 
 ## Développement
 
@@ -75,6 +78,8 @@ npx expo prebuild --clean --platform android
 
 - **Logo** : soleil derrière un nuage avec de la pluie, sur un ciel bleu. Icône adaptative Android, icône monochrome (Android 13+), écran de démarrage assorti. Nom affiché : « Ma Météo ».
 - **Ouverture rapide** : l'écran de démarrage passe directement à la dernière météo connue. Elle est recalculée pour l'heure actuelle (heure en cours, « Aujourd'hui », pluie dans l'heure), même si elle date de la veille. Toutes les villes se rechargent en parallèle ; la météo de la position part avec la dernière position connue, et n'est rechargée que si le téléphone a bougé de plus de 2 km.
+- **Correction** : avec plusieurs villes, la position principale ne se rechargeait parfois plus au lancement (les autres villes oui). Sa météo attendait le GPS puis le nom de la ville, sans délai maximum ; elle part maintenant tout de suite avec la dernière position connue.
+- **Mises à jour proposées** dans l'application à partir des Releases GitHub.
 - **Actualisation à l'ouverture** réglée sur « Toujours » par défaut ; tant que l'application reste ouverte, l'affichage est remis à l'heure toutes les 5 minutes.
 - **Mise à jour en arrière-plan** (30 min, 1 h, 3 h ou désactivée) : l'application reprend aussitôt ces données à son retour au premier plan.
 - **Widget** : il ne s'affichait pas (mauvais nom de widget lu dans le gestionnaire) ; il s'ouvre maintenant au toucher, montre l'heure de mise à jour et recharge la météo si elle a plus de 25 minutes.

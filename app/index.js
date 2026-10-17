@@ -14,6 +14,7 @@ import SkyBackdrop from '../components/weather/SkyBackdrop';
 import WeatherBackground from '../components/weather/WeatherBackground';
 import WeatherPage from '../components/weather/WeatherPage';
 import CitySearchModal from '../components/CitySearchModal';
+import UpdateBanner from '../components/UpdateBanner';
 import { COLORS, getBackgroundColors } from '../constants/theme';
 import { getKind } from '../utils/weatherCodes';
 import { timeAgo } from '../utils/format';
@@ -139,6 +140,8 @@ export default function HomeScreen() {
             <IconButton icon="add" tone="primary" onPress={() => setShowSearch(true)} disabled={!ready} />
           </View>
         </View>
+
+        <UpdateBanner />
 
         {locations.length > 1 && (
           <View style={styles.dots}>

@@ -5,13 +5,20 @@
 // À l'ouverture, tout s'affiche aussitôt depuis le cache (remis à l'heure actuelle),
 // puis la météo est rechargée en parallèle pour toutes les villes. La position n'est
 // pas attendue : la météo part avec la dernière position connue, et n'est rechargée
-// que si le téléphone a vraiment bougé.
+// que si le téléphone a vraiment bougé. (Avant, elle attendait le GPS puis le nom de
+// la ville : si l'un des deux bloquait, la position principale n'était jamais rechargée.)
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import * as Location from 'expo-location';
 import { fetchWeather } from '../utils/weatherApi';
 import { loadLocations, reformat, saveLocations } from '../utils/storage';
-import { MOVE_THRESHOLD_KM, currentCoords, distanceKm, lastKnownCoords, placeName } from '../utils/geo';
+import {
+  MOVE_THRESHOLD_KM,
+  currentCoords,
+  distanceKm,
+  ensureLocationPermission,
+  lastKnownCoords,
+  placeName,
+} from '../utils/geo';
 
 export const MAX_CITIES = 5;
 export const LOCAL_ID = 'local';
@@ -108,8 +115,7 @@ export default function useLocations() {
 
     // 2. En parallèle, vérifie si le téléphone a bougé
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return fail('Localisation refusée. Autorisez-la dans les réglages.');
+      if (!(await ensureLocationPermission())) return fail('Localisation refusée. Autorisez-la dans les réglages.');
 
       const coords = (await lastKnownCoords()) ?? (await currentCoords());
       if (!coords) return fail('Position introuvable. Vérifiez que le GPS est activé.');

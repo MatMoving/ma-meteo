@@ -38,14 +38,25 @@ export const placeName = async (coords) => {
 // Dernière position connue du téléphone (instantané), si elle est assez récente
 export const lastKnownCoords = async (maxAgeMinutes = 15) => {
   try {
-    const position = await Location.getLastKnownPositionAsync({
-      maxAge: maxAgeMinutes * 60 * 1000,
-      requiredAccuracy: 3000,
-    });
+    const position = await withTimeout(
+      Location.getLastKnownPositionAsync({
+        maxAge: maxAgeMinutes * 60 * 1000,
+        requiredAccuracy: 3000,
+      }),
+      3000,
+    );
     return position ? position.coords : null;
   } catch {
     return null;
   }
+};
+
+// Autorisation de localisation : la fenêtre de demande ne s'affiche que si elle n'est pas déjà accordée
+export const ensureLocationPermission = async () => {
+  const { status } = await withTimeout(Location.getForegroundPermissionsAsync(), 3000);
+  if (status === 'granted') return true;
+  const request = await Location.requestForegroundPermissionsAsync();
+  return request.status === 'granted';
 };
 
 // Position précise (quelques secondes), avec repli sur la dernière connue

@@ -1,5 +1,6 @@
 // Écran Paramètres : unités, affichage, mise à jour, radar, villes et informations.
 
+import { useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,8 +20,9 @@ import { useLocationsContext } from '../contexts/LocationsContext';
 import { MAX_CITIES } from '../hooks/useLocations';
 import { OPTIONS, PREVIEW_SKIES } from '../constants/settings';
 import { COLORS } from '../constants/theme';
+import { REPO, checkForUpdate } from '../utils/updateCheck';
 
-const REPO_URL = 'https://github.com/MatMoving/ma-meteo';
+const REPO_URL = `https://github.com/${REPO}`;
 const NONE = 'none';
 
 export default function SettingsScreen() {
@@ -54,6 +56,30 @@ export default function SettingsScreen() {
   };
 
   const version = Constants.expoConfig?.version ?? '-';
+  const [checking, setChecking] = useState(false);
+
+  const searchUpdate = async () => {
+    setChecking(true);
+    try {
+      const update = await checkForUpdate({ force: true });
+      if (!update) {
+        Alert.alert('Application à jour', `Vous avez la dernière version (${version}).`);
+        return;
+      }
+      Alert.alert(
+        `Version ${update.version} disponible`,
+        "Téléchargez l'APK puis ouvrez-le pour l'installer. Vos villes et réglages sont conservés.",
+        [
+          { text: 'Plus tard', style: 'cancel' },
+          { text: 'Télécharger', onPress: () => Linking.openURL(update.apkUrl ?? update.pageUrl) },
+        ],
+      );
+    } catch {
+      Alert.alert('Vérification impossible', 'Vérifiez votre connexion internet puis réessayez.');
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
@@ -149,6 +175,12 @@ export default function SettingsScreen() {
 
         <Section icon="information-circle-outline" title="À propos">
           <InfoRow label="Version" value={version} />
+          <ActionRow
+            icon="cloud-download-outline"
+            label={checking ? 'Recherche en cours…' : 'Rechercher une mise à jour'}
+            hint="Les nouvelles versions sont publiées sur GitHub. L'accueil les propose aussi tout seul."
+            onPress={checking ? undefined : searchUpdate}
+          />
           <ActionRow
             icon="cloud-outline"
             label="Données météo"
